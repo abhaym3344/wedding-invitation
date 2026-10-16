@@ -1,7 +1,6 @@
 import { util } from './util.js';
 import { storage } from './storage.js';
-import { dto } from '../connection/dto.js';
-import { request, HTTP_POST, HTTP_GET, HTTP_STATUS_OK } from '../connection/request.js';
+import { request, HTTP_GET, HTTP_STATUS_OK } from '../connection/request.js';
 
 export const session = (() => {
 
@@ -20,23 +19,6 @@ export const session = (() => {
      * @returns {void}
      */
     const setToken = (token) => ses.set('token', token);
-
-    /**
-     * @param {object} body
-     * @returns {Promise<boolean>}
-     */
-    const login = (body) => {
-        return request(HTTP_POST, '/api/session')
-            .body(body)
-            .send(dto.tokenResponse)
-            .then((res) => {
-                if (res.code === HTTP_STATUS_OK) {
-                    setToken(res.data.token);
-                }
-
-                return res.code === HTTP_STATUS_OK;
-            });
-    };
 
     /**
      * @returns {void}
@@ -110,7 +92,6 @@ export const session = (() => {
         init,
         guest,
         isValid,
-        login,
         logout,
         decode,
         isAdmin,

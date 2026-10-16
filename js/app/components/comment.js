@@ -7,7 +7,8 @@ import { dto } from '../../connection/dto.js';
 import { lang } from '../../common/language.js';
 import { storage } from '../../common/storage.js';
 import { session } from '../../common/session.js';
-import { request, HTTP_GET, HTTP_POST, HTTP_DELETE, HTTP_PUT, HTTP_STATUS_CREATED } from '../../connection/request.js';
+import { supabase } from '../../connection/supabase.js';
+import { request, HTTP_GET, HTTP_DELETE, HTTP_PUT, HTTP_STATUS_CREATED } from '../../connection/request.js';
 
 export const comment = (() => {
 
@@ -30,6 +31,26 @@ export const comment = (() => {
      * @type {string[]}
      */
     const lastRender = [];
+
+    /**
+     * @param {{ id: string, name: string, attendance: number, message: string, created_at: string }} row
+     * @returns {object}
+     */
+    const toCardComment = (row) => ({
+        uuid: row.id,
+        own: row.id,
+        name: row.name,
+        presence: row.attendance === 1,
+        comment: row.message,
+        created_at: new Date(row.created_at).toLocaleString(),
+        is_admin: false,
+        is_parent: true,
+        gif_url: null,
+        ip: null,
+        user_agent: null,
+        comments: [],
+        like_count: 0,
+    });
 
     /**
      * @returns {string}
@@ -204,39 +225,48 @@ export const comment = (() => {
             comments.innerHTML = card.renderLoading().repeat(pagination.getPer());
         }
 
-        return request(HTTP_GET, `/api/v2/comment?per=${pagination.getPer()}&next=${pagination.getNext()}&lang=${lang.getLanguage()}`)
-            .token(session.getToken())
-            .withCache(1000 * 30)
-            .withForceCache()
-            .send(dto.getCommentsResponseV2)
-            .then(async (res) => {
+        const from = pagination.getNext() * pagination.getPer();
+        const to = from + pagination.getPer() - 1;
+
+        return supabase
+            .from('comments')
+            .select('id, name, attendance, message, created_at', { count: 'exact' })
+            .eq('approved', true)
+            .order('created_at', { ascending: false })
+            .range(from, to)
+            .then(async ({ data, error, count }) => {
+                if (error) {
+                    throw new Error(`Unable to load comments: ${error.message}`);
+                }
+
+                const lists = (data ?? []).map(toCardComment);
                 comments.setAttribute('data-loading', 'false');
 
                 for (const u of lastRender) {
                     await gif.remove(u);
                 }
 
-                if (res.data.lists.length === 0) {
+                if (lists.length === 0) {
                     comments.innerHTML = onNullComment();
-                    return res;
+                    return { data: { lists, count: count ?? 0 } };
                 }
 
                 const flatten = (ii) => ii.flatMap((i) => [i.uuid, ...flatten(i.comments)]);
-                lastRender.splice(0, lastRender.length, ...flatten(res.data.lists));
-                showHide.set('hidden', traverse(res.data.lists, showHide.get('hidden')));
+                lastRender.splice(0, lastRender.length, ...flatten(lists));
+                showHide.set('hidden', traverse(lists, showHide.get('hidden')));
 
-                let data = await card.renderContentMany(res.data.lists);
-                if (res.data.lists.length < pagination.getPer()) {
-                    data += onNullComment();
+                let content = await card.renderContentMany(lists);
+                if (lists.length < pagination.getPer()) {
+                    content += onNullComment();
                 }
 
-                util.safeInnerHTML(comments, data);
+                util.safeInnerHTML(comments, content);
 
                 lastRender.forEach((u) => {
                     like.addListener(u);
                 });
 
-                return res;
+                return { data: { lists, count: count ?? 0 } };
             })
             .then(async (res) => {
                 comments.dispatchEvent(new Event('undangan.comment.result'));
@@ -422,6 +452,11 @@ export const comment = (() => {
     const send = async (button) => {
         const id = button.getAttribute('data-uuid');
 
+        if (id) {
+            util.notify('Replies are not available.').warning();
+            return;
+        }
+
         const name = document.getElementById('form-name');
         const nameValue = name.value;
 
@@ -478,21 +513,31 @@ export const comment = (() => {
         }
 
         const btn = util.disableButton(button);
-        const isPresence = presence ? presence.value === '1' : true;
-
         if (!session.isAdmin()) {
             const info = storage('information');
             info.set('name', nameValue);
 
-            if (!id) {
-                info.set('presence', isPresence);
-            }
         }
 
-        const response = await request(HTTP_POST, `/api/comment?lang=${lang.getLanguage()}`)
-            .token(session.getToken())
-            .body(dto.postCommentRequest(id, nameValue, isPresence, gifIsOpen ? null : form.value, gifId))
-            .send(dto.getCommentResponse);
+        let response = null;
+        const { data, error } = await supabase
+            .from('comments')
+            .insert({
+                name: nameValue.trim(),
+                attendance: Number(presence.value),
+                message: (gifIsOpen ? '' : form.value).trim(),
+            })
+            .select('id, name, attendance, message, created_at')
+            .single();
+
+        if (!error) {
+            response = {
+                code: HTTP_STATUS_CREATED,
+                data: toCardComment(data),
+            };
+        } else {
+            util.notify(`Unable to save comment: ${error.message}`).error();
+        }
 
         if (name) {
             name.disabled = false;
@@ -531,6 +576,10 @@ export const comment = (() => {
         }
 
         if (!id) {
+            storage('information').clear();
+            document.getElementById('form-name').value = '';
+            document.getElementById('form-presence').value = '0';
+
             if (pagination.reset()) {
                 await show();
                 comments.scrollIntoView();
@@ -546,32 +595,6 @@ export const comment = (() => {
             response.data.is_admin = session.isAdmin();
             comments.insertAdjacentHTML('afterbegin', await card.renderContentMany([response.data]));
             comments.scrollIntoView();
-        }
-
-        if (id) {
-            showHide.set('hidden', showHide.get('hidden').concat([dto.commentShowMore(response.data.uuid, true)]));
-            showHide.set('show', showHide.get('show').concat([id]));
-
-            removeInnerForm(id);
-
-            response.data.is_parent = false;
-            response.data.is_admin = session.isAdmin();
-            document.getElementById(`reply-content-${id}`).insertAdjacentHTML('beforeend', await card.renderContentSingle(response.data));
-
-            const anchorTag = document.getElementById(`button-${id}`).querySelector('a');
-            if (anchorTag) {
-                if (anchorTag.getAttribute('data-show') === 'false') {
-                    showOrHide(anchorTag);
-                }
-
-                anchorTag.remove();
-            }
-
-            const uuids = [response.data.uuid];
-            const readMoreElement = document.createRange().createContextualFragment(card.renderReadMore(id, anchorTag ? anchorTag.getAttribute('data-uuids').split(',').concat(uuids) : uuids));
-
-            const buttonLike = like.getButtonLike(id);
-            buttonLike.parentNode.insertBefore(readMoreElement, buttonLike);
         }
 
         like.addListener(response.data.uuid);

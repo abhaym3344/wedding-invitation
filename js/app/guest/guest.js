@@ -85,7 +85,7 @@ export const guest = (() => {
 
         const form = document.getElementById('form-name');
         if (form) {
-            form.value = information.get('name') ?? name;
+            form.value = form.value = '';
         }
     };
 
@@ -255,11 +255,11 @@ export const guest = (() => {
         const url = new URL('https://calendar.google.com/calendar/render');
         const data = new URLSearchParams({
             action: 'TEMPLATE',
-            text: 'The Wedding of Wahyu and Riski',
-            dates: `${formatDate('2023-03-15 10:00')}/${formatDate('2023-03-15 11:00')}`,
-            details: 'Tanpa mengurangi rasa hormat, kami mengundang Anda untuk berkenan menghadiri acara pernikahan kami. Terima kasih atas perhatian dan doa restu Anda, yang menjadi kebahagiaan serta kehormatan besar bagi kami.',
-            location: 'RT 10 RW 02, Desa Pajerukan, Kec. Kalibagor, Kab. Banyumas, Jawa Tengah 53191.',
-            ctz: config.get('tz'),
+            text: 'Wedding of Abhay & Nishtha',
+            dates: `${formatDate('2026-11-20 19:00')}/${formatDate('2026-11-21 08:00')}`,
+            details: '॥ श्री गणेशाय नमः ॥\n\nWith the divine grace of Lord Ganesha and the blessings of our elders, we joyfully invite you to celebrate the auspicious wedding ceremony of Abhay Mishra and Nishtha Mishra.\n\nSchedule of Events:\n7:00 PM: Baarat\n9:00 PM: Dinner\n\nWe look forward to your presence on this special day as we embark on a new journey together. Your blessings and good wishes mean the world to us.\n\nWith love and gratitude,\nAbhay & Nishtha',
+            location: 'Ramay Lawn, 161/24A, Damodar Nagar, Kanpur, Uttar Pradesh 208027, India',
+            ctz: 'Asia/Kolkata',
         });
 
         url.search = data.toString();
@@ -298,10 +298,6 @@ export const guest = (() => {
         normalizeArabicFont();
         buildGoogleCalendar();
 
-        if (information.has('presence')) {
-            document.getElementById('form-presence').value = information.get('presence') ? '1' : '2';
-        }
-
         if (information.get('info')) {
             document.getElementById('information')?.remove();
         }
@@ -322,16 +318,17 @@ export const guest = (() => {
         comment.init();
         progress.init();
 
-        config = storage('config');
-        information = storage('information');
+         config = storage('config');
+         config.set('can_reply', false);
+         config.set('can_edit', false);
+         config.set('can_delete', false);
+         config.set('can_like', false);
+         information = storage('information');
 
         const vid = video.init();
         const img = image.init();
         const aud = audio.init();
         const lib = loaderLibs();
-        const token = document.body.getAttribute('data-key');
-        const params = new URLSearchParams(window.location.search);
-
         window.addEventListener('resize', util.debounce(slide));
         document.addEventListener('undangan.progress.done', () => booting());
         document.addEventListener('hide.bs.modal', () => document.activeElement?.blur());
@@ -339,45 +336,14 @@ export const guest = (() => {
             img.download(e.currentTarget.getAttribute('data-src'));
         });
 
-        if (!token || token.length <= 0) {
-            document.getElementById('comment')?.remove();
-            document.querySelector('a.nav-link[href="#comment"]')?.closest('li.nav-item')?.remove();
+        vid.load();
+        img.load();
+        aud.load();
+        lib.load({ confetti: document.body.getAttribute('data-confetti') === 'true' });
 
-            vid.load();
-            img.load();
-            aud.load();
-            lib.load({ confetti: document.body.getAttribute('data-confetti') === 'true' });
-        }
-
-        if (token && token.length > 0) {
-            // add 2 progress for config and comment.
-            // before img.load();
-            progress.add();
-            progress.add();
-
-            // if don't have data-src.
-            if (!img.hasDataSrc()) {
-                img.load();
-            }
-
-            session.guest(params.get('k') ?? token).then(({ data }) => {
-                document.dispatchEvent(new Event('undangan.session'));
-                progress.complete('config');
-
-                if (img.hasDataSrc()) {
-                    img.load();
-                }
-
-                vid.load();
-                aud.load();
-                lib.load({ confetti: data.is_confetti_animation });
-
-                comment.show()
-                    .then(() => progress.complete('comment'))
-                    .catch(() => progress.invalid('comment'));
-
-            }).catch(() => progress.invalid('config'));
-        }
+        comment.show().catch((error) => {
+            console.error('Unable to load comments:', error);
+        });
     };
 
     /**

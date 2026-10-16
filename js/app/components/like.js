@@ -6,6 +6,8 @@ import { request, HTTP_PATCH, HTTP_POST, HTTP_STATUS_CREATED } from '../../conne
 
 export const like = (() => {
 
+    const commentsEnabled = true;
+
     /**
      * @type {ReturnType<typeof storage>|null}
      */
@@ -21,6 +23,9 @@ export const like = (() => {
      * @returns {Promise<void>}
      */
     const love = async (button) => {
+        if (!commentsEnabled) {
+            return;
+        }
 
         const info = button.firstElementChild;
         const heart = button.lastElementChild;

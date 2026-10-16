@@ -51,6 +51,10 @@ export const card = (() => {
      * @returns {string}
      */
     const renderLike = (c) => {
+        if (config.get('can_like') === false) {
+            return '';
+        }
+
         return `
         <button style="font-size: 0.8rem;" onclick="undangan.comment.like.love(this)" data-uuid="${c.uuid}" class="btn btn-sm btn-outline-auto ms-auto rounded-3 p-0 shadow-sm d-flex justify-content-start align-items-center" data-offline-disabled="false">
             <span class="my-0 mx-1" data-count-like="${c.like_count}">${c.like_count}</span>
