@@ -225,7 +225,7 @@ export const comment = (() => {
             comments.innerHTML = card.renderLoading().repeat(pagination.getPer());
         }
 
-        const from = pagination.getNext() * pagination.getPer();
+        const from = pagination.getNext();
         const to = from + pagination.getPer() - 1;
 
         return supabase
