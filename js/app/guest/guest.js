@@ -44,7 +44,7 @@ export const guest = (() => {
         const second = document.getElementById('second');
 
         const updateCountdown = () => {
-            const distance = Math.abs(count - Date.now());
+            const distance = Math.max(0, count - Date.now());
 
             day.textContent = pad(Math.floor(distance / (1000 * 60 * 60 * 24)));
             hour.textContent = pad(Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)));
